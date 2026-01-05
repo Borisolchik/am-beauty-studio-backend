@@ -1,5 +1,5 @@
 const { google } = require('googleapis');
-const keys = require('../../service-account.json');
+const keys = JSON.parse(process.env.GCP_SERVICE_ACCOUNT || "{}");
 const spreadsheetId = process.env.SPREADSHEET_ID;
 
 const axios = require('axios');

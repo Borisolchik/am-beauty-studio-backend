@@ -1,5 +1,5 @@
 const { google } = require('googleapis');
-const keys = require('../../service-account.json');
+const keys = JSON.parse(process.env.GCP_SERVICE_ACCOUNT || "{}");
 
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
