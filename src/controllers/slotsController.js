@@ -58,6 +58,33 @@ const getSlotsByMaster = async (req, res) => {
   }
 };
 
+const getSlotsByMasterId = async (req, res) => {
+  const masterId = req.params.masterId;
+
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `Slots!A2:F`,
+    });
+
+    const rows = response.data.values || [];
+
+    const slots = rows
+      .filter(row => row[0] === masterId && row[3] === 'available')
+      .map(row => ({
+        date: row[1],
+        time: row[2],
+        service: row[4],
+      }));
+
+    res.json(slots);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Ошибка при получении слотов' });
+  }
+};
+
+
 const createBooking = async (req, res) => {
   const { masterName, date, time, service, client, phone } = req.body;
   if (!masterName || !date || !time || !service || !client || !phone) {
@@ -124,4 +151,54 @@ const createBooking = async (req, res) => {
   }
 };
 
-module.exports = { getSlotsByMaster, createBooking };
+const toggleSlotByMaster = async (req, res) => {
+  const { masterName, date, time } = req.body;
+
+  if (!masterName || !date || !time) {
+    return res.status(400).json({ error: 'Не хватает данных' });
+  }
+
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${masterName}!A2:F`,
+    });
+
+    const rows = response.data.values || [];
+    let updated = false;
+
+    const updatedRows = rows.map(row => {
+      if (row[0] === date && row[1] === time) {
+        if (row[3] === 'available') {
+          updated = true;
+          return [row[0], row[1], row[2], 'booked', 'BLOCKED_BY_MASTER', ''];
+        }
+
+        if (row[3] === 'booked' && row[4] === 'BLOCKED_BY_MASTER') {
+          updated = true;
+          return [row[0], row[1], row[2], 'available', '', ''];
+        }
+      }
+      return row;
+    });
+
+    if (!updated) {
+      return res.status(400).json({ error: 'Слот нельзя изменить' });
+    }
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${masterName}!A2:F`,
+      valueInputOption: 'RAW',
+      requestBody: { values: updatedRows },
+    });
+
+    res.json({ message: 'Слот обновлён' });
+  } catch (err) {
+    console.error('❌ Ошибка изменения слота мастером:', err);
+    res.status(500).json({ error: 'Ошибка изменения слота' });
+  }
+};
+
+
+module.exports = { getSlotsByMaster, getSlotsByMasterId, createBooking, toggleSlotByMaster };
