@@ -15,6 +15,8 @@ async function sendTelegramMessage(chatId, text) {
         text: text,
       }
     );
+    console.log('✅ Telegram response:', response.data);
+
   } catch (err) {
     if (err.response) {
       console.error('❌ Telegram API вернул ошибку:', err.response.data);
