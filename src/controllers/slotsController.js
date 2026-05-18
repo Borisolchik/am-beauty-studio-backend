@@ -146,6 +146,7 @@ const createBooking = async (req, res) => {
     }
 
     for (let i = 0; i < slotsRequired; i++) {
+      rows[startIndex + i][2] = service;
       rows[startIndex + i][3] = 'booked';
       rows[startIndex + i][4] = client;
       rows[startIndex + i][5] = `'${phone}`;
