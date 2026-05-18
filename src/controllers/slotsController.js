@@ -16,7 +16,7 @@ async function sendTelegramMessage(chatId, text) {
       }
     );
   } catch (err) {
-    console.error('❌ Telegram error:', err.response?.data || err.message);
+    console.error(err.response?.data || err.message);
   }
 }
 
@@ -34,6 +34,8 @@ const toMinutes = (t) => {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
 };
+
+const STEP = 120;
 
 const getSlotsByMaster = async (req, res) => {
   const { masterName } = req.params;
@@ -56,7 +58,8 @@ const getSlotsByMaster = async (req, res) => {
     const available = slots.filter(s => s.status === 'available');
 
     available.sort((a, b) =>
-      a.date.localeCompare(b.date) || toMinutes(a.time) - toMinutes(b.time)
+      a.date.localeCompare(b.date) ||
+      toMinutes(a.time) - toMinutes(b.time)
     );
 
     const result = [];
@@ -70,43 +73,37 @@ const getSlotsByMaster = async (req, res) => {
       }
 
       let ok = true;
+      let prev = toMinutes(current.time);
 
       for (let j = 1; j < slotsRequired; j++) {
         const next = available[i + j];
 
-        if (
-          !next ||
-          next.date !== current.date ||
-          toMinutes(next.time) <= toMinutes(available[i + j - 1].time)
-        ) {
+        if (!next || next.date !== current.date) {
           ok = false;
           break;
         }
+
+        const nextTime = toMinutes(next.time);
+
+        if (next.status !== 'available' || nextTime - prev !== STEP) {
+          ok = false;
+          break;
+        }
+
+        prev = nextTime;
       }
 
-      if (ok) {
-        result.push(current);
-      }
+      if (ok) result.push(current);
     }
 
     res.json(result);
-
   } catch (err) {
-    console.error('❌ getSlots error:', err);
     res.status(500).json({ error: 'Ошибка при получении слотов' });
   }
 };
 
 const createBooking = async (req, res) => {
-  const {
-    masterName,
-    date,
-    time,
-    service,
-    client,
-    phone,
-    slotsRequired = 1
-  } = req.body;
+  const { masterName, date, time, service, client, phone, slotsRequired = 1 } = req.body;
 
   if (!masterName || !date || !time || !service || !client || !phone) {
     return res.status(400).json({ error: 'Все поля обязательны' });
@@ -121,10 +118,7 @@ const createBooking = async (req, res) => {
     const rows = response.data.values || [];
 
     const startIndex = rows.findIndex(
-      r =>
-        r[0] === date &&
-        r[1] === time &&
-        r[3] === 'available'
+      r => r[0] === date && r[1] === time && r[3] === 'available'
     );
 
     if (startIndex === -1) {
@@ -132,18 +126,22 @@ const createBooking = async (req, res) => {
     }
 
     if (slotsRequired > 1) {
+      let prev = toMinutes(rows[startIndex][1]);
+
       for (let i = 1; i < slotsRequired; i++) {
         const next = rows[startIndex + i];
 
-        if (
-          !next ||
-          next[0] !== date ||
-          next[3] !== 'available'
-        ) {
-          return res.status(400).json({
-            error: 'Нет полного окна для комплекса'
-          });
+        if (!next || next[0] !== date || next[3] !== 'available') {
+          return res.status(400).json({ error: 'Нет полного окна' });
         }
+
+        const nextTime = toMinutes(next[1]);
+
+        if (nextTime - prev !== STEP) {
+          return res.status(400).json({ error: 'Слоты не подряд' });
+        }
+
+        prev = nextTime;
       }
     }
 
@@ -172,20 +170,13 @@ const createBooking = async (req, res) => {
     if (telegramId) {
       await sendTelegramMessage(
         telegramId,
-        `Новая запись ✅
-Имя: ${client}
-Услуга: ${service}
-Дата: ${date}
-Время: ${time}
-Телефон: ${phone}`
+        `Новая запись\n${client}\n${service}\n${date}\n${time}\n${phone}`
       );
     }
 
-    res.json({ message: '✅ Запись успешно создана' });
-
+    res.json({ message: 'OK' });
   } catch (err) {
-    console.error('❌ createBooking error:', err);
-    res.status(500).json({ error: 'Ошибка при бронировании' });
+    res.status(500).json({ error: 'Ошибка' });
   }
 };
 
