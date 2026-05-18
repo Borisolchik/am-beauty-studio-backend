@@ -16,28 +16,28 @@ async function sendTelegramMessage(chatId, text) {
       }
     );
   } catch (err) {
-    if (err.response) {
-      console.error('❌ Telegram API error:', err.response.data);
-    } else {
-      console.error('❌ Telegram send error:', err.message);
-    }
+    console.error('❌ Telegram error:', err.response?.data || err.message);
   }
 }
+
+const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
 const auth = new google.auth.JWT({
   email: keys.client_email,
   key: keys.private_key.replace(/\\n/g, '\n'),
-  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  scopes: SCOPES,
 });
 
-const sheets = google.sheets({
-  version: 'v4',
-  auth,
-});
+const sheets = google.sheets({ version: 'v4', auth });
+
+const toMinutes = (t) => {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+};
 
 const getSlotsByMaster = async (req, res) => {
   const { masterName } = req.params;
-  const { slotsRequired = 1 } = req.query;
+  const slotsRequired = Number(req.query.slotsRequired || 1);
 
   try {
     const response = await sheets.spreadsheets.values.get({
@@ -47,43 +47,53 @@ const getSlotsByMaster = async (req, res) => {
 
     const rows = response.data.values || [];
 
-    const availableSlots = rows.filter(
-      row => row[3] === 'available'
+    const slots = rows.map(r => ({
+      date: r[0],
+      time: r[1],
+      status: r[3],
+    }));
+
+    const available = slots.filter(s => s.status === 'available');
+
+    available.sort((a, b) =>
+      a.date.localeCompare(b.date) || toMinutes(a.time) - toMinutes(b.time)
     );
 
-    const filteredSlots = [];
+    const result = [];
 
-    for (let i = 0; i < availableSlots.length; i++) {
-      const current = availableSlots[i];
+    for (let i = 0; i < available.length; i++) {
+      const current = available[i];
 
-      if (Number(slotsRequired) === 1) {
-        filteredSlots.push(current);
+      if (slotsRequired === 1) {
+        result.push(current);
         continue;
       }
 
-      const next = availableSlots[i + 1];
+      let ok = true;
 
-      if (
-        next &&
-        current[0] === next[0]
-      ) {
-        filteredSlots.push(current);
+      for (let j = 1; j < slotsRequired; j++) {
+        const next = available[i + j];
+
+        if (
+          !next ||
+          next.date !== current.date ||
+          toMinutes(next.time) <= toMinutes(available[i + j - 1].time)
+        ) {
+          ok = false;
+          break;
+        }
+      }
+
+      if (ok) {
+        result.push(current);
       }
     }
 
-    const slots = filteredSlots.map(row => ({
-      date: row[0],
-      time: row[1],
-      service: row[2],
-    }));
-
-    res.json(slots);
+    res.json(result);
 
   } catch (err) {
-    console.error('❌ Ошибка при получении слотов:', err);
-    res.status(500).json({
-      error: 'Ошибка при получении слотов'
-    });
+    console.error('❌ getSlots error:', err);
+    res.status(500).json({ error: 'Ошибка при получении слотов' });
   }
 };
 
@@ -98,17 +108,8 @@ const createBooking = async (req, res) => {
     slotsRequired = 1
   } = req.body;
 
-  if (
-    !masterName ||
-    !date ||
-    !time ||
-    !service ||
-    !client ||
-    !phone
-  ) {
-    return res.status(400).json({
-      error: 'Все поля обязательны'
-    });
+  if (!masterName || !date || !time || !service || !client || !phone) {
+    return res.status(400).json({ error: 'Все поля обязательны' });
   }
 
   try {
@@ -120,49 +121,43 @@ const createBooking = async (req, res) => {
     const rows = response.data.values || [];
 
     const startIndex = rows.findIndex(
-      row =>
-        row[0] === date &&
-        row[1] === time &&
-        row[3] === 'available'
+      r =>
+        r[0] === date &&
+        r[1] === time &&
+        r[3] === 'available'
     );
 
     if (startIndex === -1) {
-      return res.status(400).json({
-        error: 'Слот недоступен'
-      });
+      return res.status(400).json({ error: 'Слот недоступен' });
     }
 
-    if (Number(slotsRequired) === 2) {
-      const next = rows[startIndex + 1];
+    if (slotsRequired > 1) {
+      for (let i = 1; i < slotsRequired; i++) {
+        const next = rows[startIndex + i];
 
-      if (
-        !next ||
-        next[0] !== date ||
-        next[3] !== 'available'
-      ) {
-        return res.status(400).json({
-          error: 'Нет второго окна'
-        });
+        if (
+          !next ||
+          next[0] !== date ||
+          next[3] !== 'available'
+        ) {
+          return res.status(400).json({
+            error: 'Нет полного окна для комплекса'
+          });
+        }
       }
     }
 
-    rows[startIndex][3] = 'booked';
-    rows[startIndex][4] = client;
-    rows[startIndex][5] = `'${phone}`;
-
-    if (Number(slotsRequired) === 2) {
-      rows[startIndex + 1][3] = 'booked';
-      rows[startIndex + 1][4] = client;
-      rows[startIndex + 1][5] = `'${phone}`;
+    for (let i = 0; i < slotsRequired; i++) {
+      rows[startIndex + i][3] = 'booked';
+      rows[startIndex + i][4] = client;
+      rows[startIndex + i][5] = `'${phone}`;
     }
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: `${masterName}!A2:F`,
       valueInputOption: 'RAW',
-      requestBody: {
-        values: rows,
-      },
+      requestBody: { values: rows },
     });
 
     const mastersResponse = await sheets.spreadsheets.values.get({
@@ -171,35 +166,26 @@ const createBooking = async (req, res) => {
     });
 
     const masterRows = mastersResponse.data.values || [];
-
-    const masterRow = masterRows.find(
-      row => row[1] === masterName
-    );
-
-    const telegramId = masterRow?.[3];
+    const master = masterRows.find(r => r[1] === masterName);
+    const telegramId = master?.[3];
 
     if (telegramId) {
       await sendTelegramMessage(
         telegramId,
         `Новая запись ✅
-Имя клиента: ${client}
-Процедура: ${service}
+Имя: ${client}
+Услуга: ${service}
 Дата: ${date}
 Время: ${time}
 Телефон: ${phone}`
       );
     }
 
-    res.json({
-      message: '✅ Запись успешно забронирована!'
-    });
+    res.json({ message: '✅ Запись успешно создана' });
 
   } catch (err) {
-    console.error('❌ Ошибка при бронировании:', err);
-
-    res.status(500).json({
-      error: 'Ошибка при бронировании'
-    });
+    console.error('❌ createBooking error:', err);
+    res.status(500).json({ error: 'Ошибка при бронировании' });
   }
 };
 
