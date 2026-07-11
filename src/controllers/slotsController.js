@@ -20,6 +20,18 @@ async function sendTelegramMessage(chatId, text) {
   }
 }
 
+async function getMasterTelegramId(masterName) {
+  const mastersResponse = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: 'Masters!A2:D',
+  });
+
+  const masterRows = mastersResponse.data.values || [];
+  const master = masterRows.find(r => r[1] === masterName);
+
+  return master?.[3];
+}
+
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
 const auth = new google.auth.JWT({
@@ -166,14 +178,7 @@ const createBooking = async (req, res) => {
       requestBody: { values: rows },
     });
 
-    const mastersResponse = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: 'Masters!A2:D',
-    });
-
-    const masterRows = mastersResponse.data.values || [];
-    const master = masterRows.find(r => r[1] === masterName);
-    const telegramId = master?.[3];
+    const telegramId = await getMasterTelegramId(masterName);
 
     if (telegramId) {
       await sendTelegramMessage(
@@ -289,12 +294,20 @@ const cancelBooking = async (req, res) => {
       String(row[6]) === String(cancelCode)
     );
 
-
     if (!bookings.length) {
       return res.status(404).json({
         error: 'Запись не найдена'
       });
     }
+
+
+    const cancelledBooking = {
+      client: bookings[0][4],
+      service: bookings[0][2],
+      date: bookings[0][0],
+      time: bookings[0][1],
+      phone: bookings[0][5]?.replace("'", ""),
+    };
 
 
     rows.forEach(row => {
@@ -321,26 +334,17 @@ const cancelBooking = async (req, res) => {
       },
     });
 
-    const mastersResponse = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: 'Masters!A2:D',
-    });
-
-    const masterRows = mastersResponse.data.values || [];
-    const master = masterRows.find(r => r[1] === masterName);
-    const telegramId = master?.[3];
+    const telegramId = await getMasterTelegramId(masterName);
 
     if (telegramId) {
-      const booking = bookings[0];
-
       await sendTelegramMessage(
         telegramId,
-        `❌ Запись отменена\n\n` +
-        `Клиент: ${booking[4]}\n` +
-        `Услуга: ${booking[2]}\n` +
-        `Дата: ${booking[0]}\n` +
-        `Время: ${booking[1]}\n` +
-        `Телефон: ${booking[5].replace("'", "")}`
+        `Запись отменена ❌\n\n` +
+        `Имя клиента: ${cancelledBooking.client}\n` +
+        `Процедура: ${cancelledBooking.service}\n` +
+        `Дата: ${cancelledBooking.date}\n` +
+        `Время: ${cancelledBooking.time}\n` +
+        `Телефон: ${cancelledBooking.phone}`
       );
     }
 
