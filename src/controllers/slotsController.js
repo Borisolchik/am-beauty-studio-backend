@@ -37,6 +37,10 @@ const toMinutes = (t) => {
 
 const STEP = 120;
 
+const generateCancelCode = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
 const getSlotsByMaster = async (req, res) => {
   const { masterName } = req.params;
   const slotsRequired = Number(req.query.slotsRequired || 1);
@@ -44,7 +48,7 @@ const getSlotsByMaster = async (req, res) => {
   try {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${masterName}!A2:F`,
+      range: `${masterName}!A2:G`,
     });
 
     const rows = response.data.values || [];
@@ -112,7 +116,7 @@ const createBooking = async (req, res) => {
   try {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${masterName}!A2:F`,
+      range: `${masterName}!A2:G`,
     });
 
     const rows = response.data.values || [];
@@ -145,16 +149,19 @@ const createBooking = async (req, res) => {
       }
     }
 
+    const cancelCode = generateCancelCode();
+
     for (let i = 0; i < slotsRequired; i++) {
       rows[startIndex + i][2] = service;
       rows[startIndex + i][3] = 'booked';
       rows[startIndex + i][4] = client;
       rows[startIndex + i][5] = `'${phone}`;
+      rows[startIndex + i][6] = cancelCode;
     }
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${masterName}!A2:F`,
+      range: `${masterName}!A2:G`,
       valueInputOption: 'RAW',
       requestBody: { values: rows },
     });
@@ -175,13 +182,82 @@ const createBooking = async (req, res) => {
       );
     }
 
-    res.json({ message: 'OK' });
+    res.json({
+      message: 'OK',
+      cancelCode,
+    });
   } catch (err) {
     res.status(500).json({ error: 'Ошибка' });
+  }
+};
+
+const normalizePhone = (phone) => {
+  return phone.replace(/\D/g, '');
+};
+
+
+const findBooking = async (req, res) => {
+  const { phone, cancelCode } = req.body;
+
+  if (!phone || !cancelCode) {
+    return res.status(400).json({
+      error: 'Телефон и код обязательны'
+    });
+  }
+
+  try {
+    const mastersResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Masters!A2:D',
+    });
+
+    const masterRows = mastersResponse.data.values || [];
+
+    for (const masterRow of masterRows) {
+      const masterName = masterRow[1];
+
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${masterName}!A2:G`,
+      });
+
+      const rows = response.data.values || [];
+
+      const booking = rows.find(row =>
+        row[3] === 'booked' &&
+        normalizePhone(row[5]) === normalizePhone(phone) &&
+        row[6] === cancelCode
+      );
+
+      if (booking) {
+        return res.json({
+          found: true,
+          booking: {
+            masterName,
+            date: booking[0],
+            time: booking[1],
+            service: booking[2],
+            client: booking[4],
+          }
+        });
+      }
+    }
+
+    return res.json({
+      found: false
+    });
+
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      error: 'Ошибка поиска записи'
+    });
   }
 };
 
 module.exports = {
   getSlotsByMaster,
   createBooking,
+  findBooking,
 };
