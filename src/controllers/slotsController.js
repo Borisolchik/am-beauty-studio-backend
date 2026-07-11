@@ -183,8 +183,8 @@ const createBooking = async (req, res) => {
     if (telegramId) {
       await sendTelegramMessage(
         telegramId,
-        `Новая запись ✅\n\n` +
-        `Имя клиента: ${client}\n` +
+        `Фифочка записалась ✅\n\n` +
+        `Имя 💅: ${client}\n` +
         `Процедура: ${service}\n` +
         `Дата: ${date}\n` +
         `Время: ${time}\n` +
@@ -339,8 +339,8 @@ const cancelBooking = async (req, res) => {
     if (telegramId) {
       await sendTelegramMessage(
         telegramId,
-        `Запись отменена ❌\n\n` +
-        `Имя клиента: ${cancelledBooking.client}\n` +
+        `Какая-то крыса отменила запись ❌\n\n` +
+        `Имя 🐀 : ${cancelledBooking.client}\n` +
         `Процедура: ${cancelledBooking.service}\n` +
         `Дата: ${cancelledBooking.date}\n` +
         `Время: ${cancelledBooking.time}\n` +
