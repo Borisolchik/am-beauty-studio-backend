@@ -1,7 +1,7 @@
 const { google } = require('googleapis');
 const axios = require('axios');
 
-const keys = require('../../service-account.json');
+const keys = JSON.parse(process.env.GCP_SERVICE_ACCOUNT || "{}");
 const spreadsheetId = process.env.SPREADSHEET_ID;
 
 const TELEGRAM_BOT_TOKEN = '8138897961:AAE8IJFmAX1vDl3mO408zDxZYu0CTkbfNOY';
