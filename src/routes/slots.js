@@ -4,15 +4,18 @@ const router = express.Router();
 const {
   getSlotsByMaster,
   createBooking,
-  findBooking
+  findBooking,
+  cancelBooking
 } = require('../controllers/slotsController');
 
 
-router.get('/:masterName', getSlotsByMaster);
-
 router.post('/find', findBooking);
 
+router.post('/cancel', cancelBooking);
+
 router.post('/', createBooking);
+
+router.get('/:masterName', getSlotsByMaster);
 
 
 module.exports = router;

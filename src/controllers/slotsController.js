@@ -255,8 +255,85 @@ const findBooking = async (req, res) => {
   }
 };
 
+const cancelBooking = async (req, res) => {
+  const {
+    masterName,
+    date,
+    time,
+    phone,
+    cancelCode,
+  } = req.body;
+
+  if (!masterName || !date || !time || !phone || !cancelCode) {
+    return res.status(400).json({
+      error: 'Недостаточно данных'
+    });
+  }
+
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${masterName}!A2:G`,
+    });
+
+    const rows = response.data.values || [];
+
+    const bookings = rows.filter(row =>
+      row[3] === 'booked' &&
+      normalizePhone(row[5]) === normalizePhone(phone) &&
+      String(row[6]) === String(cancelCode)
+    );
+
+
+    if (!bookings.length) {
+      return res.status(404).json({
+        error: 'Запись не найдена'
+      });
+    }
+
+
+    rows.forEach(row => {
+      if (
+        row[3] === 'booked' &&
+        normalizePhone(row[5]) === normalizePhone(phone) &&
+        String(row[6]) === String(cancelCode)
+      ) {
+        row[2] = '';
+        row[3] = 'available';
+        row[4] = '';
+        row[5] = '';
+        row[6] = '';
+      }
+    });
+
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${masterName}!A2:G`,
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: rows,
+      },
+    });
+
+
+    res.json({
+      success: true,
+    });
+
+
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      error: 'Ошибка отмены записи'
+    });
+  }
+};
+
 module.exports = {
   getSlotsByMaster,
   createBooking,
   findBooking,
+  cancelBooking
 };
