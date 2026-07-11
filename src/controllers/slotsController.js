@@ -178,7 +178,12 @@ const createBooking = async (req, res) => {
     if (telegramId) {
       await sendTelegramMessage(
         telegramId,
-        `Новая запись\n${client}\n${service}\n${date}\n${time}\n${phone}`
+        `Новая запись ✅\n\n` +
+        `Имя клиента: ${client}\n` +
+        `Процедура: ${service}\n` +
+        `Дата: ${date}\n` +
+        `Время: ${time}\n` +
+        `Телефон: ${phone}`
       );
     }
 
