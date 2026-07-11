@@ -316,6 +316,28 @@ const cancelBooking = async (req, res) => {
       },
     });
 
+    const mastersResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Masters!A2:D',
+    });
+
+    const masterRows = mastersResponse.data.values || [];
+    const master = masterRows.find(r => r[1] === masterName);
+    const telegramId = master?.[3];
+
+    if (telegramId) {
+      const booking = bookings[0];
+
+      await sendTelegramMessage(
+        telegramId,
+        `❌ Запись отменена\n\n` +
+        `Клиент: ${booking[4]}\n` +
+        `Услуга: ${booking[2]}\n` +
+        `Дата: ${booking[0]}\n` +
+        `Время: ${booking[1]}\n` +
+        `Телефон: ${booking[5].replace("'", "")}`
+      );
+    }
 
     res.json({
       success: true,
