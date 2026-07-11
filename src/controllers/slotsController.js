@@ -192,9 +192,8 @@ const createBooking = async (req, res) => {
 };
 
 const normalizePhone = (phone) => {
-  return phone.replace(/\D/g, '');
+  return String(phone || '').replace(/\D/g, '');
 };
-
 
 const findBooking = async (req, res) => {
   const { phone, cancelCode } = req.body;
@@ -226,7 +225,7 @@ const findBooking = async (req, res) => {
       const booking = rows.find(row =>
         row[3] === 'booked' &&
         normalizePhone(row[5]) === normalizePhone(phone) &&
-        row[6] === cancelCode
+        String(row[6]) === String(cancelCode)
       );
 
       if (booking) {
